@@ -6,7 +6,7 @@ var assert = require("assert"),
 	writeFile = Q.nbind(fs.writeFile, fs),
 	jsdom = require("jsdom");
 
-var blogs = ["../www.dominykas.com"];
+var blogs = ["../www.dominykas.com", "../www.dominykas.lt"];
 
 function getRelativeFn(fn, folder) {
 	return fn.substr(folder.length);
@@ -14,7 +14,8 @@ function getRelativeFn(fn, folder) {
 
 function filterBlogPostFiles(srcFolder) {
 	return function (bp) {
-		return !!getRelativeFn(bp, srcFolder).match(/^\/\d\d\d\d\/\d\d\/(.*)\.html$/);
+		var relativeFn = getRelativeFn(bp, srcFolder);
+		return relativeFn.match(/^\/\d\d\d\d\/\d\d\/(.*)\.html$/) && !relativeFn.match(/index\.html$/);
 	}
 }
 
@@ -33,11 +34,34 @@ function parseBlogPosts(srcFolder) {
 			var body = document.querySelectorAll("#content .post > .postbody");
 			assert.equal(body.length, 1, ".postbody in " + relativeFn);
 
+			var tags = _.groupBy(_.map(document.querySelectorAll("#content .post > footer a"), function (lnk) {
+				var href = lnk.getAttribute("href");
+				var matches;
+
+				if (matches = href.match(/\/tag\/([\/\w\-]+)\.html$/)) {
+					return {
+						type: "tags",
+						value: matches[1]
+					};
+				}
+
+				if (matches = href.match(/\/category\/([\/\w\-]+)\.html$/)) {
+					return {
+						type: "categories",
+						value: matches[1]
+					};
+				}
+
+				throw new Error("Could not match tag/category URL: " + href);
+			}), "type");
+
 			return {
 				id: relativeFn.substr(1, relativeFn.length - 6),
 				title: h1[0].children[0].innerHTML,
 				date: date[0].getAttribute("datetime"),
-				body: body[0].innerHTML.trim()
+				body: body[0].innerHTML.trim(),
+				tags: _.pluck(tags["tags"] || [], "value"),
+				categories: _.pluck(tags["categories"] || [], "value")
 			};
 		});
 	}
@@ -64,6 +88,8 @@ function writeDataJson(postData, srcFolder) {
 			id: post.id,
 			title: post.title,
 			date: post.date,
+			tags: post.tags,
+			categories: post.categories,
 			published: true
 		}
 	}).sortBy("date").reverse().indexBy("id").value();
