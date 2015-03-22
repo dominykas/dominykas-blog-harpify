@@ -4,6 +4,7 @@ var assert = require("assert"),
 	readdir = require("recursive-readdir"),
 	fs = require("fs"),
 	writeFile = Q.nbind(fs.writeFile, fs),
+	deleteFile = Q.nbind(fs.unlink, fs),
 	jsdom = require("jsdom");
 
 var blogs = ["../www.dominykas.com", "../www.dominykas.lt"];
@@ -69,10 +70,13 @@ function parseBlogPosts(srcFolder) {
 
 function writeBlogPost(srcFolder) {
 	return function (post) {
-		var postFn = srcFolder + "/" + post.id + ".md";
+		var postMdFn = srcFolder + "/" + post.id + ".md";
+		var postHtmlFn = srcFolder + "/" + post.id + ".html";
 		var postBody = "# " + post.title + "\n\n" + post.body.replace(/\r/, "");
-		return writeFile(postFn, postBody).then(function () {
-			return postFn;
+		return writeFile(postMdFn, postBody).then(function () {
+			return deleteFile(postHtmlFn);
+		}).then(function () {
+			return postMdFn;
 		});
 	}
 }
@@ -103,7 +107,7 @@ function parseBlog(blogFolder) {
 	return Q.nfcall(readdir, srcFolder).then(function (fileList) {
 		return Q.all(fileList.filter(filterBlogPostFiles(srcFolder)).map(parseBlogPosts(srcFolder)))
 	}).then(function (postData) {
-		return Q.all([writeBlogPosts(postData, srcFolder), writeDataJson(postData, srcFolder)]);
+		return Q.all([postData, writeBlogPosts(postData, srcFolder), writeDataJson(postData, srcFolder)]);
 	});
 }
 
