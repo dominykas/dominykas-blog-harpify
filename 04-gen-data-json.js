@@ -1,19 +1,11 @@
 var Q = require("q"),
 	_ = require("lodash"),
-	readdir = require("recursive-readdir"),
+	glob = require("glob"),
 	fs = require("fs"),
 	writeFile = Q.nbind(fs.writeFile, fs),
 	readFile = Q.nbind(fs.readFile, fs),
 	yfm = require("yaml-front-matter"),
 	path = require("path");
-
-var blogs = ["../www.dominykas.com", "../www.dominykas.lt"];
-
-function filterBlogPostFiles() {
-	return function (bp) {
-		return bp.match(/\.md$/);
-	}
-}
 
 function parseBlogPosts(srcFolder) {
 	return function (fn) {
@@ -30,9 +22,11 @@ function parseBlogPosts(srcFolder) {
 				} else {
 					// throw?
 				}
-				data.tags = data.tags.split(",").map(function (t) {
-					return t.trim()
-				});
+				if (data.tags) {
+					data.tags = data.tags.split(",").map(function (t) {
+						return t.trim()
+					});
+				}
 				data.id = path.basename(fn, ".md");
 				data.folder = path.relative(srcFolder, path.dirname(fn));
 				return data;
@@ -56,20 +50,19 @@ function writeDataJson(postData, srcFolder) {
 	});
 }
 
-function parseBlog(blogFolder) {
+function parseBlog(srcFolder) {
+	return Q.nfcall(glob, srcFolder + "/**/*.md").then(function (fileList) {
+		return Q.all(fileList.map(parseBlogPosts(srcFolder)));
+	});
+}
+
+function updateBlog(blogFolder) {
 	var srcFolder = blogFolder + "/src";
-	return Q.nfcall(readdir, srcFolder).then(function (fileList) {
-		return Q.all(fileList.filter(filterBlogPostFiles()).map(parseBlogPosts(srcFolder)));
-	}).then(function (postData) {
+	return parseBlog(srcFolder).then(function (postData) {
 		return Q.all(_(postData).groupBy("folder").map(function (blogs, month) {
 			return writeDataJson(blogs, srcFolder + "/" + month);
 		}).value());
 	});
 }
 
-Q.all(blogs.map(parseBlog))
-	.spread(function () {
-		console.log(arguments);
-	})
-	.catch(console.error)
-	.done();
+Q.all(require("./folders.json").map(updateBlog)).spread(console.log).catch(console.error).done();

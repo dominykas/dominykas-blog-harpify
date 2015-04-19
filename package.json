@@ -22,9 +22,9 @@
   },
   "homepage": "https://github.com/dominykas/dominykas-blog-harpify",
   "devDependencies": {
+    "glob": "5.x",
     "jsdom": "3.x",
     "lodash": "3.x",
-    "q": "1.x",
-    "recursive-readdir": "1.x"
+    "q": "1.x"
   }
 }
