@@ -5,7 +5,14 @@ var Q = require("q"),
 	writeFile = Q.nbind(fs.writeFile, fs),
 	readFile = Q.nbind(fs.readFile, fs),
 	yfm = require("yaml-front-matter"),
-	path = require("path");
+	path = require("path"),
+	slug = require("slug");
+
+function isBlogFile(srcFolder) {
+	return function (fn) {
+		return path.relative(srcFolder, fn).match(/^\d/);
+	}
+}
 
 function parseBlogPosts(srcFolder) {
 	return function (fn) {
@@ -50,18 +57,43 @@ function writeDataJson(postData, srcFolder) {
 	});
 }
 
+function writeTag(tag, srcFolder) {
+	var tagFn = srcFolder + "/" + tag.id + ".md";
+	var tagContent = "# Tag: " + tag.title; // @todo: translate
+	return writeFile(tagFn, tagContent).then(function () {
+		return tagFn;
+	});
+}
+
 function parseBlog(srcFolder) {
 	return Q.nfcall(glob, srcFolder + "/**/*.md").then(function (fileList) {
-		return Q.all(fileList.map(parseBlogPosts(srcFolder)));
+		return Q.all(fileList.filter(isBlogFile(srcFolder)).map(parseBlogPosts(srcFolder)));
 	});
 }
 
 function updateBlog(blogFolder) {
 	var srcFolder = blogFolder + "/src";
 	return parseBlog(srcFolder).then(function (postData) {
-		return Q.all(_(postData).groupBy("folder").map(function (blogs, month) {
+		var dataJsonPromises = _(postData).groupBy("folder").map(function (blogs, month) {
 			return writeDataJson(blogs, srcFolder + "/" + month);
-		}).value());
+		}).value();
+
+		var tagFolder = srcFolder + "/tag";
+		var tagData = _(postData).pluck("tags").filter().flattenDeep().uniq().map(function (tag) {
+			return {
+				id: slug(tag),
+				title: tag
+			}
+		}).value();
+		var tagPromises = tagData.map(function (tag) {
+			return writeTag(tag, tagFolder);
+		});
+		return Q.all(_.flatten([
+			dataJsonPromises,
+			tagPromises,
+			writeFile(tagFolder + "/index.md", "# Tags"), // @todo: translate...
+			writeDataJson(_.indexBy(_.sortBy(tagData, "id").reverse(), "id"), tagFolder)
+		]));
 	});
 }
 
